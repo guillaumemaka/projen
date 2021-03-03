@@ -3,6 +3,7 @@ import * as fs from 'fs-extra';
 import { JsonFile } from './json';
 import { NodePackageManager } from './node-package';
 import { NodeProject, NodeProjectOptions } from './node-project';
+import { Project as BaseProject } from './project';
 import { Task } from './tasks/task';
 
 /* eslint-disable @typescript-eslint/no-shadow */
@@ -292,7 +293,7 @@ export interface RushJsonFile {
   /**
    * A list of projects managed by this tool.
    */
-  projects: RushProject[];
+  projects: RushProjectDefinition[];
   /**
    * The repository location
    */
@@ -489,7 +490,7 @@ export enum ResolutionStrategy {
   FewerDependencies = 'fewer-dependencies',
 }
 
-export interface RushProject {
+export interface RushProjectDefinition {
   /**
    * A list of local projects that appear as devDependencies for this project, but cannot be
    * locally linked because it would create a cyclic dependency; instead, the last published
@@ -532,12 +533,6 @@ export interface RushProject {
    * "version-policies.json" file.
    */
   versionPolicyName?: string;
-
-  /**
-   * Projen project to scaffold
-   * @see NodeProject
-   */
-  projenProject: NodeProject;
 }
 
 /**
@@ -586,15 +581,119 @@ export interface YarnOptions {
 //#endregion
 
 //#region Implementation
+export interface RushOptions {
+  /**
+   * Today the npmjs.com registry enforces fairly strict naming rules for packages, but in the
+   * early days there was no standard and hardly any enforcement.  A few large legacy projects
+   * are still using nonstandard package names, and private registries sometimes allow it.
+   * Set "allowMostlyStandardPackageNames" to true to relax Rush's enforcement of package
+   * names.  This allows upper case letters and in the future may relax other rules, however
+   * we want to minimize these exceptions.  Many popular tools use certain punctuation
+   * characters as delimiters, based on the assumption that they will never appear in a
+   * package name; thus if we relax the rules too much it is likely to cause very confusing
+   * malfunctions. The default value is false.
+   */
+  allowMostlyStandardPackageNames?: boolean;
+  /**
+   * Controls a package review workflow driven by the two config files
+   * "browser-approved-packages.json" and "nonbrowser-approved-packages.json"
+   */
+  approvedPackagesPolicy?: ApprovedPackagesPolicy;
+  /**
+   * If true, consistent version specifiers for dependencies will be enforced (i.e. "rush
+   * check" is run before some commands).
+   */
+  ensureConsistentVersions?: boolean;
+  /**
+   * Hooks are customized script actions that Rush executes when specific events occur.
+   */
+  eventHooks?: EventHooks;
+  /**
+   * If the project is stored in a Git repository, additional settings related to Git
+   */
+  gitPolicy?: GitPolicy;
+  /**
+   * Allows creation of hotfix changes. This feature is experimental so it is disabled by
+   * default. If this is set, "rush change" only allows a "hotfix" change type to be
+   * specified. This change type will be used when publishing subsequent changes from the
+   * monorepo.
+   */
+  hotfixChangeEnabled?: boolean;
+  /**
+   * A node-semver expression (e.g. ">=1.2.3 <2.0.0", see https://github.com/npm/node-semver)
+   * indicating which versions of Node.js can safely be used to build this repository.  If
+   * omitted, no validation is performed.
+   */
+  nodeSupportedVersionRange?: string;
+  /**
+   * Options that are only used when the NPM package manager is selected.
+   */
+  npmOptions?: NpmOptions;
+  /**
+   * If specified, selects NPM as the package manager and specifies the deterministic version
+   * to be installed by Rush.
+   */
+  npmVersion?: string;
+  /**
+   * Options that are only used when the PNPM pacakge manager is selected.
+   */
+  pnpmOptions?: PnpmOptions;
+  /**
+   * If specified, selects PNPM as the package manager and specifies the deterministic version
+   * to be installed by Rush.
+   */
+  pnpmVersion?: string;
+  /**
+   * The maximum folder depth for the projectFolder field.  The default value is 2, i.e. a
+   * single slash in the path name.
+   */
+  projectFolderMaxDepth?: number;
+  /**
+   * The minimum folder depth for the projectFolder field.  The default value is 1, i.e. no
+   * slashes in the path name.
+   */
+  projectFolderMinDepth?: number;
+
+  /**
+   * The repository location
+   */
+  repository?: Repository;
+  /**
+   * The version of the Rush tool that will be used to build this repository.
+   */
+  rushVersion: string;
+  /**
+   * Rush normally prints a warning if it detects a pre-LTS Node.js version. If you are
+   * testing pre-LTS versions in preparation for supporting the first LTS version, you can use
+   * this setting to disable Rush's warning.
+   */
+  suppressNodeLtsWarning?: boolean;
+  /**
+   * Indicates whether telemetry data should be collected and stored in the Rush temp folder
+   * during Rush runs.
+   */
+  telemetryEnabled?: boolean;
+  /**
+   * Defines the list of installation variants for this repository. For more details about
+   * this feature, see this article: https://rushjs.io/pages/advanced/installation_variants/
+   */
+  variants?: Variant[];
+  /**
+   * Options that are only used when the Yarn pacakge manager is selected.
+   */
+  yarnOptions?: YarnOptions;
+  /**
+   * If specified, selects Yarn as the package manager and specifies the deterministic version
+   * to be installed by Rush.
+   */
+  yarnVersion?: string;
+}
+
 /**
- * Rush options
+ * Rush Monorepo options
  */
 export interface RushMonorepoOptions extends NodeProjectOptions {
   rushOptions?: RushOptions;
-}
-
-export interface RushOptions {
-  rushJsonConfig: RushJsonFile;
 }
 
 export const PNPM_VERSION = '5.15.2';
@@ -607,16 +706,19 @@ export const RUSH_RUN_COMMAND = 'rushx';
  * @pjid rush
  */
 export class RushMonorepo extends NodeProject {
-  protected readonly projects: RushProject[];
+  protected readonly projects: RushProjectDefinition[];
   protected readonly rushJsonFile: RushJsonFile;
 
   constructor(options: RushMonorepoOptions) {
     super({ ...options });
-    this.projects = new Array<RushProject>();
+    this.projects = new Array<RushProjectDefinition>();
 
     this.addFields({ private: true });
 
-    this.rushJsonFile = options.rushOptions?.rushJsonConfig || {} as RushJsonFile;
+    this.rushJsonFile = {
+      ...(options.rushOptions || {}),
+      projects: new Array<RushProjectDefinition>(),
+    } as RushJsonFile;
 
     switch (this.package.packageManager) {
       case NodePackageManager.PNPM:
@@ -654,31 +756,31 @@ export class RushMonorepo extends NodeProject {
   }
   /**
    * Add a new rush project in rush.json
-   * @param project
+   * @param rushProjectDefinition
    */
-  public addProject(project: RushProject): RushMonorepo {
-    const projectDir = path.join(this.outdir, project.projectFolder);
+  public addProject(rushProjectDefinition: RushProjectDefinition, project: BaseProject): RushMonorepo {
+    const projectDir = path.join(this.outdir, rushProjectDefinition.projectFolder);
     if (!fs.pathExistsSync(projectDir)) {
       fs.mkdirpSync(projectDir);
     }
 
     try {
-      Object.assign(project.projenProject, { outdir: projectDir });
-      project.projenProject.synth();
+      Object.assign(project, { outdir: projectDir });
+      project.synth();
     } catch (e) {
       process.stderr.write(`Error when synthesizing rush package: ${e}\n`);
       throw e;
     }
 
-    this.projects.push(project);
+    this.projects.push(rushProjectDefinition);
 
     return this;
   }
 }
 
-//#endregion
+// #endregion
 
-//#region Utils Generated by quicktype
+// #region Utils Generated by quicktype
 
 // Converts JSON strings to/from your types
 // and asserts the results of JSON.parse at runtime
@@ -972,4 +1074,4 @@ export class RushMonorepo extends NodeProject {
 //   ],
 // };
 
-//#endregion
+// #endregion
