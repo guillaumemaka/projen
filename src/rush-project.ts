@@ -3,6 +3,7 @@ import * as fs from 'fs-extra';
 import { JsonFile } from './json';
 import { NodePackageManager } from './node-package';
 import { NodeProject, NodeProjectOptions } from './node-project';
+import { Task } from './tasks/task';
 
 /* eslint-disable @typescript-eslint/no-shadow */
 
@@ -596,20 +597,23 @@ export interface RushOptions {
   rushJsonConfig: RushJsonFile;
 }
 
-const PNPM_VERSION = '5.15.2';
-const NPM_VERSION = '4.5.0';
-const YARN_VERSION = '1.9.4';
-const RENDER_INSTALL_COMMAND = ['rush', 'update'].join(' ');
-
+export const PNPM_VERSION = '5.15.2';
+export const NPM_VERSION = '4.5.0';
+export const YARN_VERSION = '1.9.4';
+export const RENDER_INSTALL_COMMAND = ['rush', 'update'].join(' ');
+export const RUSH_RUN_COMMAND = 'rushx';
 /**
  * rushjs monorepo
  * @pjid rush
  */
 export class RushMonorepo extends NodeProject {
+  protected readonly projects: RushProject[];
   protected readonly rushJsonFile: RushJsonFile;
 
   constructor(options: RushMonorepoOptions) {
     super({ ...options });
+    this.projects = new Array<RushProject>();
+
     this.addFields({ private: true });
 
     this.rushJsonFile = options.rushOptions?.rushJsonConfig || {} as RushJsonFile;
@@ -632,11 +636,26 @@ export class RushMonorepo extends NodeProject {
         break;
     }
 
-    Object.assign(this.package, { installCommand: RENDER_INSTALL_COMMAND });
+    // Object.assign(this.package, { installCommand: RENDER_INSTALL_COMMAND });
 
-    new JsonFile(this, path.join(this.outdir, 'rush.json'), { obj: Convert.rushJsonFileToJson(this.rushJsonFile) });
+    new JsonFile(this, path.join(this.outdir, 'rush.json'), { obj: this.rushJsonFile });
   }
 
+  /**
+   * Returns the shell command to execute in order to run a task. If
+   * npmTaskExecution is set to PROJEN, the command will be `npx projen TASK`.
+   * If it is set to SHELL, the command will be `yarn run TASK` (or `npm run
+   * TASK`).
+   * @param task
+   * @override
+   */
+  public runTaskCommand(task: Task) {
+    return `${RUSH_RUN_COMMAND} ${task.name}`;
+  }
+  /**
+   * Add a new rush project in rush.json
+   * @param project
+   */
   public addProject(project: RushProject): RushMonorepo {
     const projectDir = path.join(this.outdir, project.projectFolder);
     if (!fs.pathExistsSync(projectDir)) {
@@ -647,9 +666,13 @@ export class RushMonorepo extends NodeProject {
       Object.assign(project.projenProject, { outdir: projectDir });
       project.projenProject.synth();
     } catch (e) {
-      process.stderr.write(`Error when synthesizing lerna package: ${e}\n`);
+      process.stderr.write(`Error when synthesizing rush package: ${e}\n`);
       throw e;
     }
+
+    this.projects.push(project);
+
+    return this;
   }
 }
 
@@ -659,294 +682,294 @@ export class RushMonorepo extends NodeProject {
 
 // Converts JSON strings to/from your types
 // and asserts the results of JSON.parse at runtime
-export class Convert {
-  public static toRushCommonDeployConfig(json: string): RushCommonDeployConfig {
-    return cast(JSON.parse(json), r('RushCommonDeployConfig'));
-  }
+// export class Convert {
+//   public static toRushCommonDeployConfig(json: string): RushCommonDeployConfig {
+//     return cast(JSON.parse(json), r('RushCommonDeployConfig'));
+//   }
 
-  public static rushCommonDeployConfigToJson(value: RushCommonDeployConfig): string {
-    return JSON.stringify(uncast(value, r('RushCommonDeployConfig')), null, 2);
-  }
+//   public static rushCommonDeployConfigToJson(value: RushCommonDeployConfig): string {
+//     return JSON.stringify(uncast(value, r('RushCommonDeployConfig')), null, 2);
+//   }
 
-  public static toRushCommonExperimentsConfig(json: string): RushCommonExperimentsConfig {
-    return cast(JSON.parse(json), r('RushCommonExperimentsConfig'));
-  }
+//   public static toRushCommonExperimentsConfig(json: string): RushCommonExperimentsConfig {
+//     return cast(JSON.parse(json), r('RushCommonExperimentsConfig'));
+//   }
 
-  public static rushCommonExperimentsConfigToJson(value: RushCommonExperimentsConfig): string {
-    return JSON.stringify(uncast(value, r('RushCommonExperimentsConfig')), null, 2);
-  }
+//   public static rushCommonExperimentsConfigToJson(value: RushCommonExperimentsConfig): string {
+//     return JSON.stringify(uncast(value, r('RushCommonExperimentsConfig')), null, 2);
+//   }
 
-  public static toRushCommonVersionsConfig(json: string): RushCommonVersionsConfig {
-    return cast(JSON.parse(json), r('RushCommonVersionsConfig'));
-  }
+//   public static toRushCommonVersionsConfig(json: string): RushCommonVersionsConfig {
+//     return cast(JSON.parse(json), r('RushCommonVersionsConfig'));
+//   }
 
-  public static rushCommonVersionsConfigToJson(value: RushCommonVersionsConfig): string {
-    return JSON.stringify(uncast(value, r('RushCommonVersionsConfig')), null, 2);
-  }
+//   public static rushCommonVersionsConfigToJson(value: RushCommonVersionsConfig): string {
+//     return JSON.stringify(uncast(value, r('RushCommonVersionsConfig')), null, 2);
+//   }
 
-  public static toRushJsonFile(json: string): RushJsonFile {
-    return cast(JSON.parse(json), r('RushJsonFile'));
-  }
+//   public static toRushJsonFile(json: string): RushJsonFile {
+//     return cast(JSON.parse(json), r('RushJsonFile'));
+//   }
 
-  public static rushJsonFileToJson(value: RushJsonFile): string {
-    return JSON.stringify(uncast(value, r('RushJsonFile')), null, 2);
-  }
-}
+//   public static rushJsonFileToJson(value: RushJsonFile): string {
+//     return JSON.stringify(uncast(value, r('RushJsonFile')), null, 2);
+//   }
+// }
 
-function invalidValue(typ: any, val: any, key: any = ''): never {
-  if (key) {
-    throw Error(`Invalid value for key "${key}". Expected type ${JSON.stringify(typ)} but got ${JSON.stringify(val)}`);
-  }
-  throw Error(`Invalid value ${JSON.stringify(val)} for type ${JSON.stringify(typ)}` );
-}
+// function invalidValue(typ: any, val: any, key: any = ''): never {
+//   if (key) {
+//     throw Error(`Invalid value for key "${key}". Expected type ${JSON.stringify(typ)} but got ${JSON.stringify(val)}`);
+//   }
+//   throw Error(`Invalid value ${JSON.stringify(val)} for type ${JSON.stringify(typ)}` );
+// }
 
-function jsonToJSProps(typ: any): any {
-  if (typ.jsonToJS === undefined) {
-    const map: any = {};
-    typ.props.forEach((p: any) => map[p.json] = { key: p.js, typ: p.typ });
-    typ.jsonToJS = map;
-  }
-  return typ.jsonToJS;
-}
+// function jsonToJSProps(typ: any): any {
+//   if (typ.jsonToJS === undefined) {
+//     const map: any = {};
+//     typ.props.forEach((p: any) => map[p.json] = { key: p.js, typ: p.typ });
+//     typ.jsonToJS = map;
+//   }
+//   return typ.jsonToJS;
+// }
 
-function jsToJSONProps(typ: any): any {
-  if (typ.jsToJSON === undefined) {
-    const map: any = {};
-    typ.props.forEach((p: any) => map[p.js] = { key: p.json, typ: p.typ });
-    typ.jsToJSON = map;
-  }
-  return typ.jsToJSON;
-}
+// function jsToJSONProps(typ: any): any {
+//   if (typ.jsToJSON === undefined) {
+//     const map: any = {};
+//     typ.props.forEach((p: any) => map[p.js] = { key: p.json, typ: p.typ });
+//     typ.jsToJSON = map;
+//   }
+//   return typ.jsToJSON;
+// }
 
-function transform(val: any, typ: any, getProps: any, key: any = ''): any {
-  function transformPrimitive(typ: string, val: any): any {
-    if (typeof typ === typeof val) return val;
-    return invalidValue(typ, val, key);
-  }
+// function transform(val: any, typ: any, getProps: any, key: any = ''): any {
+//   function transformPrimitive(typ: string, val: any): any {
+//     if (typeof typ === typeof val) return val;
+//     return invalidValue(typ, val, key);
+//   }
 
-  function transformUnion(typs: any[], val: any): any {
-    // val must validate against one typ in typs
-    const l = typs.length;
-    for (let i = 0; i < l; i++) {
-      const typ = typs[i];
-      try {
-        return transform(val, typ, getProps);
-      } catch (_) {}
-    }
-    return invalidValue(typs, val);
-  }
+//   function transformUnion(typs: any[], val: any): any {
+//     // val must validate against one typ in typs
+//     const l = typs.length;
+//     for (let i = 0; i < l; i++) {
+//       const typ = typs[i];
+//       try {
+//         return transform(val, typ, getProps);
+//       } catch (_) {}
+//     }
+//     return invalidValue(typs, val);
+//   }
 
-  function transformEnum(cases: string[], val: any): any {
-    if (cases.indexOf(val) !== -1) return val;
-    return invalidValue(cases, val);
-  }
+//   function transformEnum(cases: string[], val: any): any {
+//     if (cases.indexOf(val) !== -1) return val;
+//     return invalidValue(cases, val);
+//   }
 
-  function transformArray(typ: any, val: any): any {
-    // val must be an array with no invalid elements
-    if (!Array.isArray(val)) return invalidValue('array', val);
-    return val.map(el => transform(el, typ, getProps));
-  }
+//   function transformArray(typ: any, val: any): any {
+//     // val must be an array with no invalid elements
+//     if (!Array.isArray(val)) return invalidValue('array', val);
+//     return val.map(el => transform(el, typ, getProps));
+//   }
 
-  function transformDate(val: any): any {
-    if (val === null) {
-      return null;
-    }
-    const d = new Date(val);
-    if (isNaN(d.valueOf())) {
-      return invalidValue('Date', val);
-    }
-    return d;
-  }
+//   function transformDate(val: any): any {
+//     if (val === null) {
+//       return null;
+//     }
+//     const d = new Date(val);
+//     if (isNaN(d.valueOf())) {
+//       return invalidValue('Date', val);
+//     }
+//     return d;
+//   }
 
-  function transformObject(props: { [k: string]: any }, additional: any, val: any): any {
-    if (val === null || typeof val !== 'object' || Array.isArray(val)) {
-      return invalidValue('object', val);
-    }
-    const result: any = {};
-    Object.getOwnPropertyNames(props).forEach(key => {
-      const prop = props[key];
-      const v = Object.prototype.hasOwnProperty.call(val, key) ? val[key] : undefined;
-      result[prop.key] = transform(v, prop.typ, getProps, prop.key);
-    });
-    Object.getOwnPropertyNames(val).forEach(key => {
-      if (!Object.prototype.hasOwnProperty.call(props, key)) {
-        result[key] = transform(val[key], additional, getProps, key);
-      }
-    });
-    return result;
-  }
+//   function transformObject(props: { [k: string]: any }, additional: any, val: any): any {
+//     if (val === null || typeof val !== 'object' || Array.isArray(val)) {
+//       return invalidValue('object', val);
+//     }
+//     const result: any = {};
+//     Object.getOwnPropertyNames(props).forEach(key => {
+//       const prop = props[key];
+//       const v = Object.prototype.hasOwnProperty.call(val, key) ? val[key] : undefined;
+//       result[prop.key] = transform(v, prop.typ, getProps, prop.key);
+//     });
+//     Object.getOwnPropertyNames(val).forEach(key => {
+//       if (!Object.prototype.hasOwnProperty.call(props, key)) {
+//         result[key] = transform(val[key], additional, getProps, key);
+//       }
+//     });
+//     return result;
+//   }
 
-  if (typ === 'any') return val;
-  if (typ === null) {
-    if (val === null) return val;
-    return invalidValue(typ, val);
-  }
-  if (typ === false) return invalidValue(typ, val);
-  while (typeof typ === 'object' && typ.ref !== undefined) {
-    typ = typeMap[typ.ref];
-  }
-  if (Array.isArray(typ)) return transformEnum(typ, val);
-  if (typeof typ === 'object') {
-    return typ.hasOwnProperty('unionMembers') ? transformUnion(typ.unionMembers, val)
-      : typ.hasOwnProperty('arrayItems') ? transformArray(typ.arrayItems, val)
-        : typ.hasOwnProperty('props') ? transformObject(getProps(typ), typ.additional, val)
-          : invalidValue(typ, val);
-  }
-  // Numbers can be parsed by Date but shouldn't be.
-  if (typ === Date && typeof val !== 'number') return transformDate(val);
-  return transformPrimitive(typ, val);
-}
+//   if (typ === 'any') return val;
+//   if (typ === null) {
+//     if (val === null) return val;
+//     return invalidValue(typ, val);
+//   }
+//   if (typ === false) return invalidValue(typ, val);
+//   while (typeof typ === 'object' && typ.ref !== undefined) {
+//     typ = typeMap[typ.ref];
+//   }
+//   if (Array.isArray(typ)) return transformEnum(typ, val);
+//   if (typeof typ === 'object') {
+//     return typ.hasOwnProperty('unionMembers') ? transformUnion(typ.unionMembers, val)
+//       : typ.hasOwnProperty('arrayItems') ? transformArray(typ.arrayItems, val)
+//         : typ.hasOwnProperty('props') ? transformObject(getProps(typ), typ.additional, val)
+//           : invalidValue(typ, val);
+//   }
+//   // Numbers can be parsed by Date but shouldn't be.
+//   if (typ === Date && typeof val !== 'number') return transformDate(val);
+//   return transformPrimitive(typ, val);
+// }
 
-function cast<T>(val: any, typ: any): T {
-  return transform(val, typ, jsonToJSProps);
-}
+// function cast<T>(val: any, typ: any): T {
+//   return transform(val, typ, jsonToJSProps);
+// }
 
-function uncast<T>(val: T, typ: any): any {
-  return transform(val, typ, jsToJSONProps);
-}
+// function uncast<T>(val: T, typ: any): any {
+//   return transform(val, typ, jsToJSONProps);
+// }
 
-function a(typ: any) {
-  return { arrayItems: typ };
-}
+// function a(typ: any) {
+//   return { arrayItems: typ };
+// }
 
-function u(...typs: any[]) {
-  return { unionMembers: typs };
-}
+// function u(...typs: any[]) {
+//   return { unionMembers: typs };
+// }
 
-function o(props: any[], additional: any) {
-  return { props, additional };
-}
+// function o(props: any[], additional: any) {
+//   return { props, additional };
+// }
 
-function m(additional: any) {
-  return { props: [], additional };
-}
+// function m(additional: any) {
+//   return { props: [], additional };
+// }
 
-function r(name: string) {
-  return { ref: name };
-}
+// function r(name: string) {
+//   return { ref: name };
+// }
 
-const typeMap: any = {
-  RushCommonDeployConfig: o([
-    { json: '$schema', js: '$schema', typ: u(undefined, '') },
-    { json: 'deploymentProjectNames', js: 'deploymentProjectNames', typ: a('') },
-    { json: 'folderToCopy', js: 'folderToCopy', typ: u(undefined, '') },
-    { json: 'includeDevDependencies', js: 'includeDevDependencies', typ: u(undefined, true) },
-    { json: 'includeNpmIgnoreFiles', js: 'includeNpmIgnoreFiles', typ: u(undefined, true) },
-    { json: 'linkCreation', js: 'linkCreation', typ: u(undefined, r('LinkCreation')) },
-    { json: 'omitPnpmWorkaroundLinks', js: 'omitPnpmWorkaroundLinks', typ: u(undefined, true) },
-    { json: 'projectSettings', js: 'projectSettings', typ: u(undefined, a(r('ProjectSetting'))) },
-  ], false),
-  ProjectSetting: o([
-    { json: 'additionalDependenciesToInclude', js: 'additionalDependenciesToInclude', typ: u(undefined, a('')) },
-    { json: 'additionalProjectsToInclude', js: 'additionalProjectsToInclude', typ: u(undefined, a('')) },
-    { json: 'dependenciesToExclude', js: 'dependenciesToExclude', typ: u(undefined, a('')) },
-    { json: 'projectName', js: 'projectName', typ: '' },
-  ], false),
-  LinkCreation: [
-    'default',
-    'none',
-    'script',
-  ],
-  RushCommonExperimentsConfig: o([
-    { json: '$schema', js: '$schema', typ: u(undefined, '') },
-    { json: 'buildCache', js: 'buildCache', typ: u(undefined, true) },
-    { json: 'legacyIncrementalBuildDependencyDetection', js: 'legacyIncrementalBuildDependencyDetection', typ: u(undefined, true) },
-    { json: 'noChmodFieldInTarHeaderNormalization', js: 'noChmodFieldInTarHeaderNormalization', typ: u(undefined, true) },
-    { json: 'usePnpmFrozenLockfileForRushInstall', js: 'usePnpmFrozenLockfileForRushInstall', typ: u(undefined, true) },
-  ], false),
-  RushCommonVersionsConfig: o([
-    { json: '$schema', js: '$schema', typ: u(undefined, '') },
-    { json: 'allowedAlternativeVersions', js: 'allowedAlternativeVersions', typ: u(undefined, m(a(''))) },
-    { json: 'implicitlyPreferredVersions', js: 'implicitlyPreferredVersions', typ: u(undefined, true) },
-    { json: 'preferredVersions', js: 'preferredVersions', typ: u(undefined, m('')) },
-    { json: 'xstitchPreferredVersions', js: 'xstitchPreferredVersions', typ: u(undefined, m('')) },
-  ], false),
-  RushJsonFile: o([
-    { json: '$schema', js: '$schema', typ: u(undefined, '') },
-    { json: 'allowMostlyStandardPackageNames', js: 'allowMostlyStandardPackageNames', typ: u(undefined, true) },
-    { json: 'approvedPackagesPolicy', js: 'approvedPackagesPolicy', typ: u(undefined, r('ApprovedPackagesPolicy')) },
-    { json: 'ensureConsistentVersions', js: 'ensureConsistentVersions', typ: u(undefined, true) },
-    { json: 'eventHooks', js: 'eventHooks', typ: u(undefined, r('EventHooks')) },
-    { json: 'gitPolicy', js: 'gitPolicy', typ: u(undefined, r('GitPolicy')) },
-    { json: 'hotfixChangeEnabled', js: 'hotfixChangeEnabled', typ: u(undefined, true) },
-    { json: 'nodeSupportedVersionRange', js: 'nodeSupportedVersionRange', typ: u(undefined, '') },
-    { json: 'npmOptions', js: 'npmOptions', typ: u(undefined, r('NpmOptions')) },
-    { json: 'npmVersion', js: 'npmVersion', typ: u(undefined, '') },
-    { json: 'pnpmOptions', js: 'pnpmOptions', typ: u(undefined, r('PnpmOptions')) },
-    { json: 'pnpmVersion', js: 'pnpmVersion', typ: u(undefined, '') },
-    { json: 'projectFolderMaxDepth', js: 'projectFolderMaxDepth', typ: u(undefined, 3.14) },
-    { json: 'projectFolderMinDepth', js: 'projectFolderMinDepth', typ: u(undefined, 3.14) },
-    { json: 'projects', js: 'projects', typ: a(r('RushProject')) },
-    { json: 'repository', js: 'repository', typ: u(undefined, r('Repository')) },
-    { json: 'rushVersion', js: 'rushVersion', typ: '' },
-    { json: 'suppressNodeLtsWarning', js: 'suppressNodeLtsWarning', typ: u(undefined, true) },
-    { json: 'telemetryEnabled', js: 'telemetryEnabled', typ: u(undefined, true) },
-    { json: 'variants', js: 'variants', typ: u(undefined, a(r('Variant'))) },
-    { json: 'yarnOptions', js: 'yarnOptions', typ: u(undefined, r('YarnOptions')) },
-    { json: 'yarnVersion', js: 'yarnVersion', typ: u(undefined, '') },
-  ], false),
-  ApprovedPackagesPolicy: o([
-    { json: 'ignoredNpmScopes', js: 'ignoredNpmScopes', typ: u(undefined, a('')) },
-    { json: 'reviewCategories', js: 'reviewCategories', typ: u(undefined, a('')) },
-  ], false),
-  EventHooks: o([
-    { json: 'postRushBuild', js: 'postRushBuild', typ: u(undefined, a('')) },
-    { json: 'postRushInstall', js: 'postRushInstall', typ: u(undefined, a('')) },
-    { json: 'preRushBuild', js: 'preRushBuild', typ: u(undefined, a('')) },
-    { json: 'preRushInstall', js: 'preRushInstall', typ: u(undefined, a('')) },
-  ], false),
-  GitPolicy: o([
-    { json: 'allowedEmailRegExps', js: 'allowedEmailRegExps', typ: u(undefined, a('')) },
-    { json: 'changeLogUpdateCommitMessage', js: 'changeLogUpdateCommitMessage', typ: u(undefined, '') },
-    { json: 'sampleEmail', js: 'sampleEmail', typ: u(undefined, '') },
-    { json: 'versionBumpCommitMessage', js: 'versionBumpCommitMessage', typ: u(undefined, '') },
-  ], false),
-  NpmOptions: o([
-    { json: 'environmentVariables', js: 'environmentVariables', typ: u(undefined, m(r('EnvironmentVariable'))) },
-  ], false),
-  EnvironmentVariable: o([
-    { json: 'override', js: 'override', typ: u(undefined, true) },
-    { json: 'value', js: 'value', typ: u(undefined, '') },
-  ], false),
-  PnpmOptions: o([
-    { json: 'environmentVariables', js: 'environmentVariables', typ: u(undefined, m(r('EnvironmentVariable'))) },
-    { json: 'pnpmStore', js: 'pnpmStore', typ: u(undefined, r('PnpmStore')) },
-    { json: 'preventManualShrinkwrapChanges', js: 'preventManualShrinkwrapChanges', typ: u(undefined, true) },
-    { json: 'resolutionStrategy', js: 'resolutionStrategy', typ: u(undefined, r('ResolutionStrategy')) },
-    { json: 'strictPeerDependencies', js: 'strictPeerDependencies', typ: u(undefined, true) },
-    { json: 'useWorkspaces', js: 'useWorkspaces', typ: u(undefined, true) },
-  ], false),
-  RushProject: o([
-    { json: 'cyclicDependencyProjects', js: 'cyclicDependencyProjects', typ: u(undefined, a('')) },
-    { json: 'packageName', js: 'packageName', typ: '' },
-    { json: 'projectFolder', js: 'projectFolder', typ: '' },
-    { json: 'publishFolder', js: 'publishFolder', typ: u(undefined, '') },
-    { json: 'reviewCategory', js: 'reviewCategory', typ: u(undefined, '') },
-    { json: 'shouldPublish', js: 'shouldPublish', typ: u(undefined, true) },
-    { json: 'skipRushCheck', js: 'skipRushCheck', typ: u(undefined, true) },
-    { json: 'versionPolicyName', js: 'versionPolicyName', typ: u(undefined, '') },
-  ], false),
-  Repository: o([
-    { json: 'defaultBranch', js: 'defaultBranch', typ: u(undefined, '') },
-    { json: 'defaultRemote', js: 'defaultRemote', typ: u(undefined, '') },
-    { json: 'url', js: 'url', typ: u(undefined, '') },
-  ], false),
-  Variant: o([
-    { json: 'description', js: 'description', typ: '' },
-    { json: 'variantName', js: 'variantName', typ: '' },
-  ], 'any'),
-  YarnOptions: o([
-    { json: 'environmentVariables', js: 'environmentVariables', typ: u(undefined, m(r('EnvironmentVariable'))) },
-    { json: 'ignoreEngines', js: 'ignoreEngines', typ: u(undefined, true) },
-  ], false),
-  PnpmStore: [
-    'global',
-    'local',
-  ],
-  ResolutionStrategy: [
-    'fast',
-    'fewer-dependencies',
-  ],
-};
+// const typeMap: any = {
+//   RushCommonDeployConfig: o([
+//     { json: '$schema', js: '$schema', typ: u(undefined, '') },
+//     { json: 'deploymentProjectNames', js: 'deploymentProjectNames', typ: a('') },
+//     { json: 'folderToCopy', js: 'folderToCopy', typ: u(undefined, '') },
+//     { json: 'includeDevDependencies', js: 'includeDevDependencies', typ: u(undefined, true) },
+//     { json: 'includeNpmIgnoreFiles', js: 'includeNpmIgnoreFiles', typ: u(undefined, true) },
+//     { json: 'linkCreation', js: 'linkCreation', typ: u(undefined, r('LinkCreation')) },
+//     { json: 'omitPnpmWorkaroundLinks', js: 'omitPnpmWorkaroundLinks', typ: u(undefined, true) },
+//     { json: 'projectSettings', js: 'projectSettings', typ: u(undefined, a(r('ProjectSetting'))) },
+//   ], false),
+//   ProjectSetting: o([
+//     { json: 'additionalDependenciesToInclude', js: 'additionalDependenciesToInclude', typ: u(undefined, a('')) },
+//     { json: 'additionalProjectsToInclude', js: 'additionalProjectsToInclude', typ: u(undefined, a('')) },
+//     { json: 'dependenciesToExclude', js: 'dependenciesToExclude', typ: u(undefined, a('')) },
+//     { json: 'projectName', js: 'projectName', typ: '' },
+//   ], false),
+//   LinkCreation: [
+//     'default',
+//     'none',
+//     'script',
+//   ],
+//   RushCommonExperimentsConfig: o([
+//     { json: '$schema', js: '$schema', typ: u(undefined, '') },
+//     { json: 'buildCache', js: 'buildCache', typ: u(undefined, true) },
+//     { json: 'legacyIncrementalBuildDependencyDetection', js: 'legacyIncrementalBuildDependencyDetection', typ: u(undefined, true) },
+//     { json: 'noChmodFieldInTarHeaderNormalization', js: 'noChmodFieldInTarHeaderNormalization', typ: u(undefined, true) },
+//     { json: 'usePnpmFrozenLockfileForRushInstall', js: 'usePnpmFrozenLockfileForRushInstall', typ: u(undefined, true) },
+//   ], false),
+//   RushCommonVersionsConfig: o([
+//     { json: '$schema', js: '$schema', typ: u(undefined, '') },
+//     { json: 'allowedAlternativeVersions', js: 'allowedAlternativeVersions', typ: u(undefined, m(a(''))) },
+//     { json: 'implicitlyPreferredVersions', js: 'implicitlyPreferredVersions', typ: u(undefined, true) },
+//     { json: 'preferredVersions', js: 'preferredVersions', typ: u(undefined, m('')) },
+//     { json: 'xstitchPreferredVersions', js: 'xstitchPreferredVersions', typ: u(undefined, m('')) },
+//   ], false),
+//   RushJsonFile: o([
+//     { json: '$schema', js: '$schema', typ: u(undefined, '') },
+//     { json: 'allowMostlyStandardPackageNames', js: 'allowMostlyStandardPackageNames', typ: u(undefined, true) },
+//     { json: 'approvedPackagesPolicy', js: 'approvedPackagesPolicy', typ: u(undefined, r('ApprovedPackagesPolicy')) },
+//     { json: 'ensureConsistentVersions', js: 'ensureConsistentVersions', typ: u(undefined, true) },
+//     { json: 'eventHooks', js: 'eventHooks', typ: u(undefined, r('EventHooks')) },
+//     { json: 'gitPolicy', js: 'gitPolicy', typ: u(undefined, r('GitPolicy')) },
+//     { json: 'hotfixChangeEnabled', js: 'hotfixChangeEnabled', typ: u(undefined, true) },
+//     { json: 'nodeSupportedVersionRange', js: 'nodeSupportedVersionRange', typ: u(undefined, '') },
+//     { json: 'npmOptions', js: 'npmOptions', typ: u(undefined, r('NpmOptions')) },
+//     { json: 'npmVersion', js: 'npmVersion', typ: u(undefined, '') },
+//     { json: 'pnpmOptions', js: 'pnpmOptions', typ: u(undefined, r('PnpmOptions')) },
+//     { json: 'pnpmVersion', js: 'pnpmVersion', typ: u(undefined, '') },
+//     { json: 'projectFolderMaxDepth', js: 'projectFolderMaxDepth', typ: u(undefined, 3.14) },
+//     { json: 'projectFolderMinDepth', js: 'projectFolderMinDepth', typ: u(undefined, 3.14) },
+//     { json: 'projects', js: 'projects', typ: a(r('RushProject')) },
+//     { json: 'repository', js: 'repository', typ: u(undefined, r('Repository')) },
+//     { json: 'rushVersion', js: 'rushVersion', typ: '' },
+//     { json: 'suppressNodeLtsWarning', js: 'suppressNodeLtsWarning', typ: u(undefined, true) },
+//     { json: 'telemetryEnabled', js: 'telemetryEnabled', typ: u(undefined, true) },
+//     { json: 'variants', js: 'variants', typ: u(undefined, a(r('Variant'))) },
+//     { json: 'yarnOptions', js: 'yarnOptions', typ: u(undefined, r('YarnOptions')) },
+//     { json: 'yarnVersion', js: 'yarnVersion', typ: u(undefined, '') },
+//   ], false),
+//   ApprovedPackagesPolicy: o([
+//     { json: 'ignoredNpmScopes', js: 'ignoredNpmScopes', typ: u(undefined, a('')) },
+//     { json: 'reviewCategories', js: 'reviewCategories', typ: u(undefined, a('')) },
+//   ], false),
+//   EventHooks: o([
+//     { json: 'postRushBuild', js: 'postRushBuild', typ: u(undefined, a('')) },
+//     { json: 'postRushInstall', js: 'postRushInstall', typ: u(undefined, a('')) },
+//     { json: 'preRushBuild', js: 'preRushBuild', typ: u(undefined, a('')) },
+//     { json: 'preRushInstall', js: 'preRushInstall', typ: u(undefined, a('')) },
+//   ], false),
+//   GitPolicy: o([
+//     { json: 'allowedEmailRegExps', js: 'allowedEmailRegExps', typ: u(undefined, a('')) },
+//     { json: 'changeLogUpdateCommitMessage', js: 'changeLogUpdateCommitMessage', typ: u(undefined, '') },
+//     { json: 'sampleEmail', js: 'sampleEmail', typ: u(undefined, '') },
+//     { json: 'versionBumpCommitMessage', js: 'versionBumpCommitMessage', typ: u(undefined, '') },
+//   ], false),
+//   NpmOptions: o([
+//     { json: 'environmentVariables', js: 'environmentVariables', typ: u(undefined, m(r('EnvironmentVariable'))) },
+//   ], false),
+//   EnvironmentVariable: o([
+//     { json: 'override', js: 'override', typ: u(undefined, true) },
+//     { json: 'value', js: 'value', typ: u(undefined, '') },
+//   ], false),
+//   PnpmOptions: o([
+//     { json: 'environmentVariables', js: 'environmentVariables', typ: u(undefined, m(r('EnvironmentVariable'))) },
+//     { json: 'pnpmStore', js: 'pnpmStore', typ: u(undefined, r('PnpmStore')) },
+//     { json: 'preventManualShrinkwrapChanges', js: 'preventManualShrinkwrapChanges', typ: u(undefined, true) },
+//     { json: 'resolutionStrategy', js: 'resolutionStrategy', typ: u(undefined, r('ResolutionStrategy')) },
+//     { json: 'strictPeerDependencies', js: 'strictPeerDependencies', typ: u(undefined, true) },
+//     { json: 'useWorkspaces', js: 'useWorkspaces', typ: u(undefined, true) },
+//   ], false),
+//   RushProject: o([
+//     { json: 'cyclicDependencyProjects', js: 'cyclicDependencyProjects', typ: u(undefined, a('')) },
+//     { json: 'packageName', js: 'packageName', typ: '' },
+//     { json: 'projectFolder', js: 'projectFolder', typ: '' },
+//     { json: 'publishFolder', js: 'publishFolder', typ: u(undefined, '') },
+//     { json: 'reviewCategory', js: 'reviewCategory', typ: u(undefined, '') },
+//     { json: 'shouldPublish', js: 'shouldPublish', typ: u(undefined, true) },
+//     { json: 'skipRushCheck', js: 'skipRushCheck', typ: u(undefined, true) },
+//     { json: 'versionPolicyName', js: 'versionPolicyName', typ: u(undefined, '') },
+//   ], false),
+//   Repository: o([
+//     { json: 'defaultBranch', js: 'defaultBranch', typ: u(undefined, '') },
+//     { json: 'defaultRemote', js: 'defaultRemote', typ: u(undefined, '') },
+//     { json: 'url', js: 'url', typ: u(undefined, '') },
+//   ], false),
+//   Variant: o([
+//     { json: 'description', js: 'description', typ: '' },
+//     { json: 'variantName', js: 'variantName', typ: '' },
+//   ], 'any'),
+//   YarnOptions: o([
+//     { json: 'environmentVariables', js: 'environmentVariables', typ: u(undefined, m(r('EnvironmentVariable'))) },
+//     { json: 'ignoreEngines', js: 'ignoreEngines', typ: u(undefined, true) },
+//   ], false),
+//   PnpmStore: [
+//     'global',
+//     'local',
+//   ],
+//   ResolutionStrategy: [
+//     'fast',
+//     'fewer-dependencies',
+//   ],
+// };
 
 //#endregion
